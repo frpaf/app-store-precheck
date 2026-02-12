@@ -1,0 +1,20 @@
+{
+  "name": "app-store-precheck",
+  "description": "Pre-submission validation for Flutter/mobile apps before App Store and Google Play submission. Catches common rejection issues automatically.",
+  "version": "1.0.0",
+  "author": {
+    "name": "frpaf"
+  },
+  "repository": "https://github.com/frpaf/app-store-precheck",
+  "keywords": [
+    "mobile",
+    "app-store",
+    "play-store",
+    "validation",
+    "flutter",
+    "ios",
+    "android",
+    "review",
+    "precheck"
+  ]
+}
