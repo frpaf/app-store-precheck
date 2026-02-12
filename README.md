@@ -4,22 +4,60 @@ Pre-submission validation for **Flutter** and **Expo** apps before App Store and
 
 Catches common rejection issues automatically so you don't waste days in review limbo.
 
-## Why?
+## v3.0.0 — What's New
 
-App Store reviews can take 1-4 days. Getting rejected for something simple like:
-- ❌ UIBackgroundModes "audio" (you don't need it for push notifications!)
-- ❌ Generic camera permission string ("Camera access needed")
-- ❌ Missing account deletion (required since 2022)
-- ❌ No "Restore Purchases" button
+- **Split into platform-specific skills** — separate Android and iOS checks for targeted validation
+- **Comprehensive Android permissions audit** — scans AndroidManifest.xml for restricted, dangerous, and deprecated permissions
+- **Foreground service type validation** — catches missing `foregroundServiceType` (crash on API 34+)
+- **Network security checks** — cleartext traffic detection, HTTPS enforcement
+- **Scoped Storage migration** — flags legacy storage permissions
+- **AAB format requirement** — blocks APK-only builds
+- **Play Billing Library v7+** — validates IAP library version
+- **SDK Data Safety audit** — detects 20+ common SDKs and maps them to required Data Safety form declarations
+- **Play Console manual checklist** — 11 items that must be completed in console
+- **Updated targetSdk** — now requires API 35 (Aug 2025 deadline passed)
 
-...means another 1-4 day wait. This plugin catches these before you submit.
+## Skills
+
+| Skill | Path | Description |
+|-------|------|-------------|
+| **Android Pre-Check** | `skills/android-precheck/` | Google Play Store submission validation |
+| **iOS Pre-Check** | `skills/ios-precheck/` | Apple App Store submission validation |
+
+### Android Pre-Check (`skills/android-precheck/`)
+
+Validates your app against Google Play requirements:
+
+| Category | Checks |
+|----------|--------|
+| **Build & Config** | targetSdk 35+, compileSdk, AAB format, signing, R8/ProGuard |
+| **Permissions** | 15 checks — restricted (SMS, Call Log), dangerous (Location, Camera), legacy (Storage) |
+| **Foreground Services** | Missing `foregroundServiceType`, invalid types |
+| **Network Security** | Cleartext traffic, HTTPS enforcement, network_security_config.xml |
+| **Storage Policy** | Scoped Storage migration, legacy permission detection |
+| **In-App Purchases** | Play Billing Library v7+, restore mechanism |
+| **Account & Privacy** | Account deletion, privacy policy, data deletion URL |
+| **SDK Data Safety** | 20 SDKs mapped to Data Safety form declarations |
+
+### iOS Pre-Check (`skills/ios-precheck/`)
+
+Validates your app against Apple App Store requirements:
+
+| Category | Checks |
+|----------|--------|
+| **Background Modes** | UIBackgroundModes audit (audio, voip, location) — Guideline 2.5.4 |
+| **Privacy Strings** | 16 privacy keys checked for placeholders, length, specificity — Guideline 5.1.1 |
+| **App Transport Security** | NSAllowsArbitraryLoads, exception domains |
+| **Build Config** | Bundle ID, version, build number, deployment target |
+| **Account & Privacy** | Account deletion (5.1.1(v)), restore purchases (3.1.1), privacy policy |
+| **Flutter Version** | Known problematic versions (3.24.3, 3.24.4) |
 
 ## Supported Frameworks
 
 | Framework | Detection | Build Workflow |
 |-----------|-----------|----------------|
-| **Flutter** | `pubspec.yaml` | `flutter build ios/apk` |
-| **Expo** | `app.json` | `npx expo prebuild` → `npx expo run:ios/android` |
+| **Flutter** | `pubspec.yaml` | `flutter build ios` / `flutter build appbundle` |
+| **Expo** | `app.json` + expo | `npx expo prebuild` → `npx expo run:ios/android` |
 | **React Native** | `package.json` | Native builds |
 
 ## Quick Start
@@ -34,77 +72,65 @@ npx expo prebuild
 ./precheck.sh
 ```
 
-## What It Checks
+Or use Claude:
 
-### iOS (Apple App Store)
+> "Run the Play Store precheck on my Flutter app"
 
-| Issue | What Happens |
-|-------|--------------|
-| UIBackgroundModes "audio" | ❌ Rejected (Guideline 2.5.4) |
-| Short/generic privacy strings | ❌ Rejected (Guideline 5.1.1) |
-| Placeholder text in permissions | ❌ Rejected |
-| NSAllowsArbitraryLoads | ⚠️ May need justification |
+> "Run the App Store precheck on my Expo project"
 
-### Android (Google Play)
+## Why?
 
-| Issue | What Happens |
-|-------|--------------|
-| targetSdk < 34 | ❌ Rejected (Aug 2025 requirement) |
-| targetSdk 34 for new apps | ⚠️ New apps need 35 |
-| Missing signing config | ⚠️ Build will fail |
+App Store reviews take 1-4 days. Google Play reviews take 1-7 days. Getting rejected for something like:
 
-### General (Both Stores)
+- ❌ targetSdk below 35 (instant rejection since Aug 2025)
+- ❌ Legacy storage permissions without `maxSdkVersion` 
+- ❌ Missing `foregroundServiceType` (crash on Android 14+)
+- ❌ `READ_SMS` permission without being default handler
+- ❌ UIBackgroundModes "audio" (you don't need it for push notifications!)
+- ❌ Generic camera permission string ("Camera access needed")
+- ❌ Missing account deletion (required by both stores)
+- ❌ No "Restore Purchases" button (iOS)
+- ❌ Data Safety form mismatch (Firebase SDK detected but not declared)
 
-| Issue | What Happens |
-|-------|--------------|
-| Login but no account deletion | ❌ Rejected (iOS 5.1.1(v)) |
-| IAP but no restore purchases | ❌ Rejected (iOS 3.1.1) |
-| No privacy policy in app | ⚠️ Required by both stores |
-| Flutter 3.24.3-3.24.4 | ❌ iOS rejects (non-public APIs) |
+...means another multi-day wait. This plugin catches these before you submit.
 
 ## Output
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║                     APP STORE PRE-CHECK VALIDATOR                         ║
-║                       Flutter & Expo Edition                              ║
+║               GOOGLE PLAY STORE PRE-CHECK VALIDATOR v3.0                  ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 
 ┌─────────────────────────────────────────────┐
-│  Expo Project: my-app                       │
-│  SDK Version: 51.0.0                        │
-│  Prebuild: ✓ Native directories exist       │
+│  Project: my-app                            │
+│  Framework: Flutter 3.27.1                  │
 └─────────────────────────────────────────────┘
 
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃   iOS CHECKS (Apple App Store)                                           ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┃   BUILD & CONFIGURATION                                                  ┃
+▸ Target SDK Level (must be 35+)          ✅
+▸ Build Format (AAB required)             ✅
+▸ Release Signing Configuration           ✅
 
-▸ UIBackgroundModes (Guideline 2.5.4)
-  ❌ BLOCKER: 'audio' background mode declared
-     Only valid for music streaming/playback apps.
-     Fix: Remove 'audio' from UIBackgroundModes
+┃   PERMISSIONS AUDIT (AndroidManifest.xml)                                ┃
+▸ Restricted Permissions                  ✅
+▸ Background Location                     ✅
+▸ Legacy Storage Permissions              ❌ WRITE_EXTERNAL_STORAGE without maxSdkVersion
 
-...
+┃   FOREGROUND SERVICES                                                    ┃
+▸ Service type declarations               ⚠️  LocationService missing foregroundServiceType
+
+┃   SDK DATA SAFETY AUDIT                                                  ┃
+▸ Firebase Analytics detected             ℹ️  Declare: Device IDs, App activity
+▸ Firebase Crashlytics detected           ℹ️  Declare: Crash logs, Device IDs
+▸ Google Maps SDK detected                ℹ️  Declare: Location data
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                              FINAL VERDICT
+  TOTAL:  1 blocker   1 warning   12 passed
+  🚫 NOT READY FOR SUBMISSION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  iOS:          1 blockers   1 warnings   3 passed
-  Android:      0 blockers   0 warnings   5 passed
-  General:      0 blockers   1 warnings   2 passed
-  ─────────────────────────────────────────────────────────
-  TOTAL:        1 blockers   2 warnings  10 passed
-
-╔═══════════════════════════════════════════════════════════════════════════╗
-║   🚫 NOT READY FOR SUBMISSION                                             ║
-║   Fix 1 blocker(s) before submitting to stores                           ║
-╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
 ## Screenshot Requirements
-
-Included in manual checklists:
 
 | Platform | Size | Dimensions | Required |
 |----------|------|------------|----------|
@@ -123,12 +149,28 @@ Add to your `.claude/skills/` directory or install via marketplace.
 
 ```bash
 # Copy to your project
-cp precheck.sh /path/to/your/project/
-chmod +x precheck.sh
+cp skills/android-precheck/scripts/precheck-android.sh /path/to/your/project/
+cp skills/ios-precheck/scripts/precheck-ios.sh /path/to/your/project/
+chmod +x precheck-*.sh
 
 # Run
-./precheck.sh
+./precheck-android.sh
+./precheck-ios.sh
 ```
+
+## References
+
+### Android
+- [Google Play Developer Program Policy](https://support.google.com/googleplay/android-developer/answer/16810878)
+- [Google Play Data Safety Requirements](https://support.google.com/googleplay/android-developer/answer/10787469)
+- [Target API Level Requirements](https://support.google.com/googleplay/android-developer/answer/11926878)
+- [Permissions and Sensitive APIs Policy](https://support.google.com/googleplay/android-developer/answer/16558241)
+- [Google Play SDK Index](https://developer.android.com/distribute/sdk-index)
+
+### iOS
+- [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+- [App Store Screenshot Specifications](https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/)
+- [App Privacy Details](https://developer.apple.com/app-store/app-privacy-details/)
 
 ## License
 
