@@ -1,287 +1,315 @@
 ---
-name: precheck
-description: Pre-submission validation for Flutter/mobile apps before App Store and Google Play submission. Use when preparing to submit an app for review or checking compliance.
-argument-hint: "[--ios-only|--android-only] [--verbose]"
-user-invocable: true
-disable-model-invocation: false
-context: fork
-allowed-tools: Bash, Read
+name: app-store-precheck
+version: 2.1.0
+description: Pre-submission validation for Flutter and Expo apps before App Store and Google Play submission
+triggers:
+  - app store
+  - play store
+  - submission
+  - precheck
+  - app review
+  - rejection
+  - flutter deploy
+  - expo submit
+  - expo prebuild
+tools:
+  - bash
 ---
 
-# App Store Pre-Check
+# App Store Pre-Check for Flutter & Expo
 
-Validates Flutter (and other mobile) apps against Apple App Store and Google Play Store requirements before submission. Catches the most common rejection reasons automatically.
+Automated pre-submission validation to catch common rejection issues **before** you submit to the App Store or Google Play.
 
-## When to Use
+## Supported Frameworks
 
-- Before submitting a new app to App Store or Play Store
-- Before submitting an update
-- When preparing for app review after previous rejection
-- When auditing an existing app for compliance
+| Framework | Detection | Build Workflow |
+|-----------|-----------|----------------|
+| **Flutter** | `pubspec.yaml` | `flutter build ios/apk` |
+| **Expo** | `app.json` + expo | `npx expo prebuild` → `npx expo run:ios/android` |
+| **React Native** | `package.json` | Native builds |
 
 ## Quick Start
 
-Run from the Flutter project root:
+Run from your project root:
 
 ```bash
-bash scripts/precheck.sh
+./precheck.sh
 ```
 
-Or invoke via Claude: "Pre-check my app for App Store submission"
+Or use Claude to analyze your project:
 
-## Workflow
+> "Run the app store precheck on my Flutter app"
 
-1. **Identify project type**: Flutter, React Native/Expo, or native
-2. **Locate project root**: Find `pubspec.yaml` (Flutter), `package.json` (RN/Expo)
-3. **Run automated scans** on:
-   - `ios/Runner/Info.plist`
-   - `android/app/build.gradle` or `android/app/build.gradle.kts`
-   - `android/app/src/main/AndroidManifest.xml`
-   - Source code for feature detection
-4. **Generate checklist** for manual verification items
-5. **Output report** with blockers, warnings, and recommendations
+### Expo Projects
 
----
-
-## iOS Checks (Info.plist)
-
-### 1. UIBackgroundModes Audit (Guideline 2.5.4)
-
-**Critical**: The `audio` background mode is ONLY for apps that play persistent audio (music players, streaming apps). Custom notification sounds do NOT qualify.
+For Expo, run prebuild first so native files exist:
 
 ```bash
-# Check for UIBackgroundModes
-plutil -extract UIBackgroundModes xml1 -o - ios/Runner/Info.plist 2>/dev/null || echo "No UIBackgroundModes"
+npx expo prebuild
+./precheck.sh
 ```
 
-**Flag if**:
-- `audio` is present but app doesn't stream music/audio
-- `voip` is present but app doesn't make VoIP calls
-- `location` is present without clear location-based features
+Without prebuild, the script checks `app.json` config only.
 
-**Recommendation**: Remove unused background modes. Firebase push notifications handle notification sounds without `audio` mode.
+## What It Checks
 
-### 2. Privacy Purpose Strings (Guideline 5.1.1)
+### iOS Checks (Apple App Store)
 
-All `NS*UsageDescription` keys must contain:
-- **Specific explanation** of why the permission is needed
-- **Concrete example** of how it's used in the app
+| Check | Guideline | Severity |
+|-------|-----------|----------|
+| UIBackgroundModes abuse (audio, voip, location) | 2.5.4 | ❌ Blocker |
+| Privacy purpose strings too short | 5.1.1 | ⚠️ Warning |
+| Privacy purpose strings with placeholder text | 5.1.1 | ❌ Blocker |
+| Privacy purpose strings too generic | 5.1.1 | ⚠️ Warning |
+| NSAllowsArbitraryLoads enabled | - | ⚠️ Warning |
+| Bundle ID / version configuration | - | ℹ️ Info |
 
-**Bad**: `"This app needs camera access"`
-**Good**: `"Take photos to attach to your daily activity reports and share with caregivers"`
+### Android Checks (Google Play)
 
-**Required keys to check** (if corresponding APIs are used):
+| Check | Requirement | Severity |
+|-------|-------------|----------|
+| targetSdk < 34 | Aug 2025 policy | ❌ Blocker |
+| targetSdk = 34 (new apps need 35) | Aug 2025 policy | ⚠️ Warning |
+| Missing signing configuration | Release builds | ⚠️ Warning |
+| key.properties not in .gitignore | Security | ⚠️ Warning |
 
-| Key | Required When |
-|-----|---------------|
-| `NSCameraUsageDescription` | Camera access |
-| `NSPhotoLibraryUsageDescription` | Reading photos |
-| `NSPhotoLibraryAddUsageDescription` | Saving photos |
-| `NSMicrophoneUsageDescription` | Audio recording |
-| `NSLocationWhenInUseUsageDescription` | Location (foreground) |
-| `NSLocationAlwaysUsageDescription` | Location (background) |
-| `NSContactsUsageDescription` | Contacts access |
-| `NSCalendarsUsageDescription` | Calendar access |
-| `NSFaceIDUsageDescription` | Face ID authentication |
-| `NSBluetoothAlwaysUsageDescription` | Bluetooth |
-| `NSBluetoothPeripheralUsageDescription` | Bluetooth peripherals |
-| `NSSpeechRecognitionUsageDescription` | Speech recognition |
-| `NSMotionUsageDescription` | Motion/fitness data |
-| `NSHealthShareUsageDescription` | HealthKit read |
-| `NSHealthUpdateUsageDescription` | HealthKit write |
+### General Checks (Both Platforms)
 
-**Validation rules**:
-- String length > 20 characters (reject generic text)
-- Contains action verb (take, capture, record, access, save)
-- No placeholder text ("Example:", "TODO", "You should fill this in")
+| Check | Requirement | Severity |
+|-------|-------------|----------|
+| Login exists but no account deletion | iOS 5.1.1(v), Play Policy | ❌ Blocker |
+| IAP exists but no restore purchases | iOS 3.1.1 | ❌ Blocker |
+| No privacy policy in app | Both stores | ⚠️ Warning |
+| Flutter 3.24.3-3.24.4 (iOS API issues) | iOS 2.5.1 | ❌ Blocker |
 
-### 3. App Transport Security
+## Screenshot Requirements
 
-**Flag if**:
-- `NSAllowsArbitraryLoads` is `true` without justification
-- HTTP domains are allowed without reason
+The script provides a manual checklist for screenshots.
 
----
+### iOS Screenshots (2025)
 
-## iOS Checks (App Features)
+| Device | Dimensions | Required? |
+|--------|------------|-----------|
+| **iPhone 6.9"** (16 Pro Max) | 1320 × 2868 px | ✅ Required |
+| iPhone 6.7" (15 Pro Max) | 1290 × 2796 px | Auto-scaled |
+| **iPad 13"** | 2064 × 2752 px | ✅ If iPad app |
 
-### 4. Account Deletion Requirement (Guideline 5.1.1(v))
+- Max 10 screenshots per device
+- First 3 shown in search results (most important!)
+- Format: JPEG or PNG, no transparency, max 8MB
 
-**Rule**: If your app allows account creation, you MUST provide in-app account deletion.
+### Android Screenshots (2025)
 
-**Check**:
-- Search codebase for account creation flows (signIn, login, createUser, FirebaseAuth)
-- Verify deletion flow exists (deleteUser, deleteAccount)
-- Deletion must delete data, not just deactivate
+| Device | Dimensions | Required? |
+|--------|------------|-----------|
+| **Phone** | 1080 × 1920 (or 9:16) | ✅ Min 2 total |
+| 7" Tablet | 1200 × 1920 | If supported |
+| 10" Tablet | 1600 × 2560 | If supported |
 
-**Not acceptable**:
-- "Email support to delete account"
-- Redirect to website only
-- Deactivation without data deletion
+- Max 8 screenshots per device type
+- Aspect ratio must not exceed 2:1
+- Format: JPEG or PNG, **no transparency**, max 8MB
+- **No device frames** (unlike iOS)
 
-### 5. Restore Purchases (Guideline 3.1.1)
+## Expo-Specific Notes
 
-**Rule**: If you have non-consumable IAP or subscriptions, you MUST have a "Restore Purchases" button.
+### With Prebuild (Recommended)
 
-**Check**:
-- Look for `in_app_purchase` or `purchases_flutter` packages
-- Verify restore button exists on paywall/settings
-- Test: Buy → Reinstall → Restore → Content unlocks
+After running `npx expo prebuild`, the script checks:
+- `ios/<ProjectName>/Info.plist` - Full native checks
+- `android/app/build.gradle` - Full native checks
 
-### 6. Privacy Policy Accessibility
+### Without Prebuild
 
-**Required locations**:
-1. App Store Connect metadata
-2. Inside app (typically Settings or About screen)
+If no `ios/` or `android/` directories exist, the script checks:
+- `app.json` → `ios.bundleIdentifier`
+- `app.json` → `android.package`  
+- `app.json` → `ios.infoPlist` overrides
 
----
+The script will suggest running `npx expo prebuild` for complete checks.
 
-## Android Checks (build.gradle)
+### app.json Configuration
 
-### 7. Target SDK Level
-
-**2025/2026 Requirements**:
-- New apps: `targetSdk 35` (Android 15) required
-- Updates: `targetSdk 34` minimum
-
-```bash
-# Check compileSdk and targetSdk
-grep -E "(compileSdk|targetSdk)" android/app/build.gradle*
+```json
+{
+  "expo": {
+    "ios": {
+      "bundleIdentifier": "com.yourcompany.yourapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take photos of documents to upload"
+      }
+    },
+    "android": {
+      "package": "com.yourcompany.yourapp"
+    }
+  }
+}
 ```
 
-**Flag if**:
-- `targetSdk < 34` for updates
-- `targetSdk < 35` for new apps
+## Flutter-Specific Notes
 
-### 8. Build Format (AAB Required)
+### Known Problematic Versions
 
-Google Play requires Android App Bundle (`.aab`), not APK.
+| Version | Issue | Solution |
+|---------|-------|----------|
+| 3.24.3 | Uses non-public iOS APIs | Upgrade to 3.24.5+ |
+| 3.24.4 | Uses non-public iOS APIs | Upgrade to 3.24.5+ |
 
-```bash
-# Verify AAB is being built
-flutter build appbundle --release
-```
+### Common Flutter Issues
 
-### 9. Signing Configuration
-
-**Check for Play App Signing enrollment**:
-- `signingConfigs` block in build.gradle
-- Upload key vs signing key configuration
-- Key properties file exists
-
-### 10. 16KB Page Size Support (Android 15)
-
-New requirement for Android 15 compatibility. Check native libraries.
-
----
-
-## Android Checks (Metadata)
-
-### 11. Store Listing Limits
-
-| Field | Limit |
-|-------|-------|
-| Title | 30 characters max |
-| Short description | 80 characters max |
-| Full description | 4000 characters max |
-
-### 12. Data Safety Form
-
-Must accurately reflect:
-- Data collected by app AND all SDKs
-- Data shared with third parties
-- Data handling practices
-
-**Google cross-references** with actual app behavior. Mismatches cause rejection.
-
-### 13. Content Rating
-
-Complete the questionnaire honestly. Incorrect ratings → rejection or removal.
-
----
-
-## Both Platforms
-
-### 14. Backend Availability
-
-**Critical**: Your API must be UP during review.
-
-**Checklist**:
-- [ ] API endpoints accessible
-- [ ] Test accounts populated with data
-- [ ] No maintenance windows during review period
-- [ ] Error handling for network failures (don't show blank screen)
-
-### 15. Screenshot/Metadata Accuracy (Guideline 2.3)
-
-- Screenshots must show actual app UI
-- Description must match available features
-- No promises of features not yet implemented
-
-### 16. User-Generated Content (Guideline 1.2)
-
-If your app has UGC (comments, posts, profiles, uploads):
-
-**Required**:
-- [ ] Report content mechanism
-- [ ] Block user mechanism
-- [ ] Content filtering/moderation
-- [ ] Contact information for support
-
-### 17. AI Transparency (2025 Requirement)
-
-If using external AI services:
-- Disclose AI usage to users
-- Get user consent for AI processing
-- Document in privacy policy
-
----
+1. **UIBackgroundModes audio** - Often added by Firebase plugins but not needed for push notifications
+2. **Generic privacy strings** - Flutter templates have placeholder text
+3. **Release mode crashes** - Always test `flutter build` not just `flutter run`
 
 ## Output Format
 
-Generate a report with three sections:
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                     APP STORE PRE-CHECK VALIDATOR                         ║
+╚═══════════════════════════════════════════════════════════════════════════╝
 
-### ❌ Blockers (Will cause rejection)
-- Issues that must be fixed before submission
+┌─────────────────────────────────────────────┐
+│  Expo Project: my-app                       │
+│  SDK Version: 51.0.0                        │
+│  Prebuild: ✓ Native directories exist       │
+└─────────────────────────────────────────────┘
 
-### ⚠️ Warnings (May cause rejection)
-- Issues that could trigger review depending on reviewer
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃   iOS CHECKS (Apple App Store)                                           ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+▸ UIBackgroundModes (Guideline 2.5.4)
+▸ Privacy Purpose Strings (Guideline 5.1.1)  
+▸ App Transport Security (ATS)
+▸ App Version Info
 
-### ✅ Passed
-- Checks that passed validation
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃   ANDROID CHECKS (Google Play Store)                                     ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+▸ Target SDK Level
+▸ Release Signing Configuration
+▸ App Version Info
+▸ Code Shrinking (R8/ProGuard)
 
-### 📋 Manual Checklist
-- Items requiring human verification
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃   GENERAL CHECKS (Both Platforms)                                        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+▸ Account Management (deletion required)
+▸ In-App Purchases (restore required)
+▸ Privacy Policy
 
----
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                          iOS SUMMARY                                      ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+❌ BLOCKERS / ⚠️ WARNINGS / ✅ PASSED
+📋 MANUAL CHECKLIST
 
-## Common Rejection Scenarios
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                        ANDROID SUMMARY                                    ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+❌ BLOCKERS / ⚠️ WARNINGS / ✅ PASSED
+📋 MANUAL CHECKLIST
 
-| Issue | Guideline | Resolution |
-|-------|-----------|------------|
-| UIBackgroundModes audio without streaming | 2.5.4 | Remove "audio" from Info.plist |
-| Generic camera purpose string | 5.1.1 | Add specific usage example |
-| Backend down during review | 2.1 | Ensure API availability |
-| Missing privacy policy for Apple TV | N/A | Add to App Store Connect |
-| Android signing not configured | N/A | Enroll in Play App Signing |
-| Account creation without deletion | 5.1.1(v) | Add in-app account deletion |
-| IAP without restore purchases | 3.1.1 | Add "Restore Purchases" button |
-| targetSdk too low | Google Play | Update to 34+ (35 for new apps) |
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                        GENERAL SUMMARY                                    ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+❌ BLOCKERS / ⚠️ WARNINGS / ✅ PASSED
+📋 MANUAL CHECKLIST
 
----
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                              FINAL VERDICT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  iOS:          X blockers   X warnings   X passed
+  Android:      X blockers   X warnings   X passed
+  General:      X blockers   X warnings   X passed
+  ─────────────────────────────────────────────────────────
+  TOTAL:        X blockers   X warnings   X passed
 
-## Arguments
+🚫 NOT READY / ⚠️ REVIEW WARNINGS / ✅ AUTOMATED CHECKS PASSED
+```
 
-$ARGUMENTS
+## Exit Codes
 
-If no arguments provided, run full check on both iOS and Android.
+| Code | Meaning |
+|------|---------|
+| 0 | All checks passed (or warnings only) |
+| 1 | Blockers found - do not submit |
 
----
+## Common Fixes
+
+### UIBackgroundModes "audio" (iOS)
+
+```xml
+<!-- ios/Runner/Info.plist or ios/<AppName>/Info.plist -->
+<!-- REMOVE 'audio' if not a streaming app -->
+<key>UIBackgroundModes</key>
+<array>
+    <string>audio</string>  <!-- DELETE THIS LINE -->
+    <string>remote-notification</string>  <!-- This one is OK -->
+</array>
+```
+
+For Expo, remove from `app.json`:
+```json
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]  // Remove "audio"
+      }
+    }
+  }
+}
+```
+
+### Generic Privacy Strings (iOS)
+
+```xml
+<!-- BAD -->
+<key>NSCameraUsageDescription</key>
+<string>Camera access needed</string>
+
+<!-- GOOD -->
+<key>NSCameraUsageDescription</key>
+<string>Take photos of receipts to attach to your expense reports</string>
+```
+
+For Expo in `app.json`:
+```json
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take photos of receipts to attach to your expense reports"
+      }
+    }
+  }
+}
+```
+
+### Account Deletion (Both)
+
+Add a "Delete Account" option in Settings or Profile screen that:
+1. Clearly explains what will be deleted
+2. Requires confirmation
+3. Actually deletes the account and data
+
+### Restore Purchases (iOS)
+
+Add a visible "Restore Purchases" button on your paywall or in Settings that calls:
+
+```dart
+// Flutter (in_app_purchase)
+await InAppPurchase.instance.restorePurchases();
+```
+
+```javascript
+// Expo/React Native (react-native-iap)
+await RNIap.getAvailablePurchases();
+```
 
 ## References
 
-- [App Store Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
-- [Google Play Developer Policy](https://play.google.com/about/developer-content-policy/)
-- [Apple Info.plist Key Reference](https://developer.apple.com/documentation/bundleresources/information_property_list)
-- [Offering Account Deletion](https://developer.apple.com/support/offering-account-deletion-in-your-app/)
-- [In-App Purchase Guidelines](https://developer.apple.com/in-app-purchase/)
+- [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+- [Google Play Policy Center](https://support.google.com/googleplay/android-developer/answer/9859455)
+- [App Store Screenshot Specs](https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/)
+- [Play Store Screenshot Requirements](https://support.google.com/googleplay/android-developer/answer/9866151)
