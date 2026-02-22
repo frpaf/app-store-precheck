@@ -31,9 +31,9 @@ Explore a mobile app using `agent-device`, capture unique screenshots of key scr
 You MUST execute all four phases in order. Do NOT stop after capturing screenshots or generating captions. The final deliverable is styled store-ready images, not raw screenshots.
 
 1. **Phase 1 — App Exploration**: Open app, navigate, capture 5-8 unique screenshots
-2. **Phase 2 — Caption Generation**: Write marketing captions for each screenshot
-3. **Phase 3 — Output Organization**: Create `captions.json`, validate lengths, generate summary
-4. **Phase 4 — Screenshot Styling**: Run `screenshot_styler.py` to produce final store-ready images with phone frames and marketing text overlays. This is the final step — do not skip it.
+2. **Phase 2 — Caption Generation**: Detect language from UI text, write marketing captions in that language
+3. **Phase 3 — Output Organization**: Create `captions.json` (with `detected_language` per screenshot), validate lengths, generate summary
+4. **Phase 4 — Screenshot Styling**: Run `screenshot_styler.py` for EACH required device size based on `--store` (apple/play/both). Produces final store-ready images with phone frames, marketing text, organized by device and language. This is the final step — do not skip it.
 
 ## Workflow
 
@@ -234,32 +234,69 @@ The styler reads the `detected_language` field from `captions.json` and automati
 - Generates captions in the language detected from each screenshot
 - Creates per-language folders when screenshots contain multiple languages
 
-Run this command, replacing the paths with the actual directories used in the previous phases:
+#### Store-Specific Styling
+
+Based on the `--store` argument passed to the skill, run the styler with the correct presets for each required device size. You MUST generate ALL required sizes for the target store.
+
+**For `--store apple` (App Store):**
 
 ```bash
+# iPhone 6.9" — REQUIRED for all iOS apps
 python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --input <screenshots_dir> \
-  --output <screenshots_dir>/styled \
-  --captions-json <screenshots_dir>/captions.json
+  --output <screenshots_dir>/styled/iphone \
+  --captions-json <screenshots_dir>/captions.json \
+  --preset iphone-6.9
+
+# iPad 13" — REQUIRED if the app is Universal (supports iPad)
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <screenshots_dir>/styled/ipad \
+  --captions-json <screenshots_dir>/captions.json \
+  --preset ipad-13
 ```
 
-#### Multi-Language Output
+**For `--store play` (Google Play Store):**
 
-If `captions.json` contains screenshots in multiple languages, the styler automatically organizes output into per-language folders:
+```bash
+# Phone portrait — REQUIRED (min 2 screenshots)
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <screenshots_dir>/styled/phone \
+  --captions-json <screenshots_dir>/captions.json \
+  --preset phone-portrait
+```
+
+**For `--store both` (default — generate all):**
+
+Run all three commands above (iphone + ipad + phone-portrait).
+
+#### Output Structure
+
+The final output is organized by device and language:
 
 ```
 <screenshots_dir>/styled/
-├── en/
-│   ├── 01_home_styled.png
-│   ├── 03_action_plan_styled.png
-│   └── 05_settings_styled.png
-└── da/
-    ├── 02_hjem_styled.png
-    ├── 04_handlingsplan_styled.png
-    └── 06_indstillinger_styled.png
+├── iphone/                          # 1320x2868 (App Store required)
+│   ├── en/
+│   │   ├── 01_home_styled.png
+│   │   └── 02_settings_styled.png
+│   └── da/
+│       ├── 01_home_styled.png
+│       └── 02_settings_styled.png
+├── ipad/                            # 2064x2752 (App Store if Universal)
+│   ├── en/
+│   │   └── ...
+│   └── da/
+│       └── ...
+└── phone/                           # 1080x1920 (Play Store)
+    ├── en/
+    │   └── ...
+    └── da/
+        └── ...
 ```
 
-If all screenshots are the same language, they are placed directly in the output folder (no language subfolder).
+If all screenshots are the same language, the language subfolder is omitted.
 
 #### Additional Options
 
@@ -277,13 +314,6 @@ python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --output <screenshots_dir>/styled \
   --captions-json <screenshots_dir>/captions.json \
   --bg-color "25,25,112"
-
-# Generate for a specific device preset (e.g., App Store iPhone)
-python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
-  --input <screenshots_dir> \
-  --output <screenshots_dir>/styled_iphone \
-  --captions-json <screenshots_dir>/captions.json \
-  --preset iphone-6.9
 ```
 
 #### What the Styler Does
@@ -349,7 +379,10 @@ Config file format:
 | `phone-landscape` | 1920 x 1080 | Landscape screenshots |
 | `iphone-6.9` | 1320 x 2868 | iPhone 16 Pro Max (App Store) |
 | `iphone-6.5` | 1242 x 2688 | iPhone 11 Pro Max (App Store) |
-| `ipad-13` | 2064 x 2752 | iPad Pro (App Store) |
+| `ipad-13` | 2064 x 2752 | iPad Pro 13" portrait (App Store) |
+| `ipad-13-landscape` | 2752 x 2064 | iPad Pro 13" landscape (App Store) |
+| `ipad-12.9` | 2048 x 2732 | iPad Pro 12.9" portrait (App Store) |
+| `ipad-12.9-landscape` | 2732 x 2048 | iPad Pro 12.9" landscape (App Store) |
 | `tablet-7` | 1080 x 1920 | Android 7" tablet |
 | `tablet-10` | 1200 x 1920 | Android 10" tablet |
 
@@ -394,3 +427,18 @@ See `references/store-listing-specs.md` for screenshot dimensions and store requ
 ```
 /app-store-screenshots <bundle-id> --platform <ios|android> [--count 5-8] [--store play|apple|both]
 ```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `<bundle-id>` | Yes | — | App bundle ID (e.g., `com.example.app`) |
+| `--platform` | Yes | — | `ios` or `android` |
+| `--count` | No | `5-8` | Number of unique screens to capture |
+| `--store` | No | `both` | Target store: `play` (Play Store only), `apple` (App Store only), or `both` |
+
+### What `--store` controls in Phase 4
+
+| `--store` | Presets generated |
+|-----------|-------------------|
+| `apple` | `iphone-6.9` (1320x2868) + `ipad-13` (2064x2752 if Universal app) |
+| `play` | `phone-portrait` (1080x1920) |
+| `both` | All of the above |

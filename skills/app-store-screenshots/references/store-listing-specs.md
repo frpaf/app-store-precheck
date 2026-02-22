@@ -39,13 +39,27 @@
 | iPhone 15 Pro Max | 6.7" | 1290 x 2796 px | Auto-scaled |
 | iPhone 15 Plus | 6.5" | 1284 x 2778 px | Auto-scaled |
 | iPhone 8 Plus | 5.5" | 1242 x 2208 px | Auto-scaled |
-| iPad Pro 13" | 13" | 2064 x 2752 px | If iPad app |
-| iPad Pro 12.9" | 12.9" | 2048 x 2732 px | Auto-scaled |
+| iPad 12.9" / 13" | 12.9"–13" | See below | If iPad app |
+
+#### iPad 12.9" / 13" Display Screenshots
+
+Accepted dimensions (portrait or landscape):
+
+| Dimensions | Orientation |
+|------------|-------------|
+| 2064 x 2752 px | Portrait |
+| 2752 x 2064 px | Landscape |
+| 2048 x 2732 px | Portrait |
+| 2732 x 2048 px | Landscape |
+
+- Up to **3 app previews** and **10 screenshots**
+- A single set covers both 12.9" and 13" displays
 
 ### App Store Rules
 
 - **Minimum**: 1 screenshot per device
 - **Maximum**: 10 screenshots per device
+- **App previews**: Up to 3 per device
 - **Format**: JPEG or PNG
 - **Transparency**: Not allowed
 - **Max file size**: 8 MB per screenshot

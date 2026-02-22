@@ -34,13 +34,16 @@ except ImportError:
 # ─── Size Presets ────────────────────────────────────────────────────────────
 
 PRESETS = {
-    "phone-portrait":  (1080, 1920),   # Default, Play Store phone
-    "phone-landscape": (1920, 1080),   # Landscape screenshots
-    "iphone-6.9":      (1320, 2868),   # iPhone 16 Pro Max (App Store)
-    "iphone-6.5":      (1242, 2688),   # iPhone 11 Pro Max (App Store)
-    "ipad-13":         (2064, 2752),   # iPad Pro (App Store)
-    "tablet-7":        (1080, 1920),   # Android 7" tablet
-    "tablet-10":       (1200, 1920),   # Android 10" tablet
+    "phone-portrait":       (1080, 1920),   # Default, Play Store phone
+    "phone-landscape":      (1920, 1080),   # Landscape screenshots
+    "iphone-6.9":           (1320, 2868),   # iPhone 16 Pro Max (App Store)
+    "iphone-6.5":           (1242, 2688),   # iPhone 11 Pro Max (App Store)
+    "ipad-13":              (2064, 2752),   # iPad Pro 13" portrait (App Store)
+    "ipad-13-landscape":    (2752, 2064),   # iPad Pro 13" landscape (App Store)
+    "ipad-12.9":            (2048, 2732),   # iPad Pro 12.9" portrait (App Store)
+    "ipad-12.9-landscape":  (2732, 2048),   # iPad Pro 12.9" landscape (App Store)
+    "tablet-7":             (1080, 1920),   # Android 7" tablet
+    "tablet-10":            (1200, 1920),   # Android 10" tablet
 }
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
