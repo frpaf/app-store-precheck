@@ -1,7 +1,7 @@
 ---
 name: app-store-screenshots
 version: 1.0.0
-description: Explore a mobile app using agent-device, capture unique screenshots, and generate app store marketing captions for each screen.
+description: Explore a mobile app using agent-device, capture unique screenshots, generate marketing captions, and produce styled store-ready images with phone frames and text overlays.
 triggers:
   - app store screenshots
   - play store listing images
@@ -18,13 +18,22 @@ tools:
 
 # App Store Screenshots & Caption Generator
 
-Explore a mobile app using `agent-device`, capture unique screenshots of key screens, and generate marketing captions for Play Store and App Store listings.
+Explore a mobile app using `agent-device`, capture unique screenshots of key screens, generate marketing captions, and produce styled store-ready images with phone frames and text overlays.
 
 ## Prerequisites
 
 - `agent-device` CLI installed (`npm install -g agent-device`)
 - iOS Simulator or Android Emulator running with the target app installed
-- Python 3 for output organization
+- Python 3 + Pillow (`pip install Pillow`)
+
+## IMPORTANT: Complete All 4 Phases
+
+You MUST execute all four phases in order. Do NOT stop after capturing screenshots or generating captions. The final deliverable is styled store-ready images, not raw screenshots.
+
+1. **Phase 1 — App Exploration**: Open app, navigate, capture 5-8 unique screenshots
+2. **Phase 2 — Caption Generation**: Write marketing captions for each screenshot
+3. **Phase 3 — Output Organization**: Create `captions.json`, validate lengths, generate summary
+4. **Phase 4 — Screenshot Styling**: Run `screenshot_styler.py` to produce final store-ready images with phone frames and marketing text overlays. This is the final step — do not skip it.
 
 ## Workflow
 
@@ -177,38 +186,43 @@ This produces:
 }
 ```
 
-### Phase 4 — Screenshot Styling
+### Phase 4 — Screenshot Styling (MANDATORY — Do Not Skip)
 
-After capturing screenshots and generating captions, create store-ready marketing images using the screenshot styler. This adds a phone frame, background, and marketing text overlay to each raw screenshot.
+**Immediately after Phase 3**, run the screenshot styler to produce the final store-ready images. This is the main deliverable — raw screenshots are not suitable for store listings.
 
-#### Run the Styler
+Run this command, replacing the paths with the actual directories used in the previous phases:
 
 ```bash
-# Style all captured screenshots using captions from Phase 3
 python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --input <screenshots_dir> \
-  --output <styled_output_dir> \
-  --captions-json <output_dir>/captions.json
+  --output <screenshots_dir>/styled \
+  --captions-json <screenshots_dir>/captions.json
+```
 
-# With a specific language
+The styled images are saved to `<screenshots_dir>/styled/` alongside the raw captures.
+
+#### Additional Options
+
+```bash
+# With a specific language for text overlay
 python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --input <screenshots_dir> \
-  --output <styled_output_dir> \
-  --captions-json <output_dir>/captions.json \
+  --output <screenshots_dir>/styled \
+  --captions-json <screenshots_dir>/captions.json \
   --lang da
 
 # With custom background color
 python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --input <screenshots_dir> \
-  --output <styled_output_dir> \
-  --captions-json <output_dir>/captions.json \
+  --output <screenshots_dir>/styled \
+  --captions-json <screenshots_dir>/captions.json \
   --bg-color "25,25,112"
 
-# Generate for a specific device preset
+# Generate for a specific device preset (e.g., App Store iPhone)
 python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --input <screenshots_dir> \
-  --output <styled_output_dir> \
-  --captions-json <output_dir>/captions.json \
+  --output <screenshots_dir>/styled_iphone \
+  --captions-json <screenshots_dir>/captions.json \
   --preset iphone-6.9
 ```
 
