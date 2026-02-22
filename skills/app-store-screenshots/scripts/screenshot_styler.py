@@ -164,7 +164,29 @@ def generate_text_for_screenshot(image_path, lang="en"):
     return [line.strip().strip('"').strip("'") for line in text.split("\n") if line.strip()]
 
 
-# ─── Text Resolution ────────────────────────────────────────────────────────
+# ─── Text & Language Resolution ──────────────────────────────────────────────
+
+def get_screenshot_language(filename, captions_data):
+    """Get the detected language for a screenshot from captions.json."""
+    if not captions_data:
+        return None
+    for screenshot in captions_data.get("screenshots", []):
+        if screenshot.get("filename") == filename:
+            return screenshot.get("detected_language")
+    return None
+
+
+def get_all_languages(captions_data):
+    """Get the set of all detected languages from captions.json."""
+    if not captions_data:
+        return set()
+    langs = set()
+    for screenshot in captions_data.get("screenshots", []):
+        lang = screenshot.get("detected_language")
+        if lang:
+            langs.add(lang)
+    return langs
+
 
 def resolve_text(filename, lang, config, captions_data, custom_text):
     """Resolve text lines for a screenshot from available sources."""
@@ -302,7 +324,7 @@ def create_styled_screenshot(
 def process_screenshots(
     input_path,
     output_dir,
-    lang="en",
+    lang=None,
     custom_text=None,
     bg_color=DEFAULT_BG_COLOR,
     config=None,
@@ -310,7 +332,14 @@ def process_screenshots(
     preset="phone-portrait",
     font_size=DEFAULT_FONT_SIZE,
 ):
-    """Process all screenshots in a folder or a single file."""
+    """Process all screenshots in a folder or a single file.
+
+    Language handling:
+    - If --lang is set, all screenshots use that language (overrides auto-detection)
+    - If captions.json has detected_language per screenshot, use that
+    - If multiple languages detected, output is organized into per-language folders
+    - Falls back to 'en' if no language can be determined
+    """
 
     os.makedirs(output_dir, exist_ok=True)
     input_path = Path(input_path)
@@ -329,20 +358,38 @@ def process_screenshots(
         print(f"No image files found in {input_path}")
         return []
 
-    print(f"\nProcessing {len(files)} screenshot(s) -> {preset} ({canvas_size[0]}x{canvas_size[1]})\n")
+    # Determine if we need per-language folders
+    detected_languages = get_all_languages(captions_data) if captions_data else set()
+    use_lang_folders = not lang and len(detected_languages) > 1
+
+    if use_lang_folders:
+        print(f"\nMultiple languages detected: {', '.join(sorted(detected_languages))}")
+        print(f"Output will be organized into per-language folders.\n")
+
+    print(f"Processing {len(files)} screenshot(s) -> {preset} ({canvas_size[0]}x{canvas_size[1]})\n")
 
     results = []
     for i, filepath in enumerate(files, 1):
         print(f"[{i}/{len(files)}] {filepath.name}")
 
+        # Determine language for this screenshot
+        if lang:
+            # --lang flag overrides everything
+            screenshot_lang = lang
+        else:
+            # Auto-detect from captions.json
+            screenshot_lang = get_screenshot_language(filepath.name, captions_data) or "en"
+
+        print(f"  Language: {screenshot_lang}")
+
         # Resolve text
-        lines = resolve_text(filepath.name, lang, config, captions_data, custom_text)
+        lines = resolve_text(filepath.name, screenshot_lang, config, captions_data, custom_text)
 
         if lines is None:
-            # Try Claude API
-            print(f"  Generating text ({lang})...")
+            # Try Claude API with detected language
+            print(f"  Generating text ({screenshot_lang})...")
             try:
-                lines = generate_text_for_screenshot(str(filepath), lang)
+                lines = generate_text_for_screenshot(str(filepath), screenshot_lang)
             except Exception as e:
                 print(f"  API error: {e}")
                 lines = None
@@ -353,8 +400,15 @@ def process_screenshots(
 
         print(f"  Text: {' / '.join(lines)}")
 
-        output_name = f"{filepath.stem}_styled.png"
-        output_path = str(Path(output_dir) / output_name)
+        # Determine output path (with or without language subfolder)
+        if use_lang_folders:
+            lang_output_dir = str(Path(output_dir) / screenshot_lang)
+            os.makedirs(lang_output_dir, exist_ok=True)
+            output_name = f"{filepath.stem}_styled.png"
+            output_path = str(Path(lang_output_dir) / output_name)
+        else:
+            output_name = f"{filepath.stem}_styled.png"
+            output_path = str(Path(output_dir) / output_name)
 
         create_styled_screenshot(
             str(filepath),
@@ -366,7 +420,12 @@ def process_screenshots(
         )
         results.append(output_path)
 
-    print(f"\nDone! {len(results)} styled screenshot(s) saved to {output_dir}/\n")
+    print(f"\nDone! {len(results)} styled screenshot(s) saved to {output_dir}/")
+    if use_lang_folders:
+        for detected_lang in sorted(detected_languages):
+            lang_count = sum(1 for r in results if f"/{detected_lang}/" in r)
+            print(f"  {detected_lang}/: {lang_count} screenshot(s)")
+    print()
     return results
 
 
@@ -428,8 +487,8 @@ def main():
                         help="Input screenshot file or folder")
     parser.add_argument("--output", "-o", required=True,
                         help="Output directory for styled screenshots")
-    parser.add_argument("--lang", "-l", default="en",
-                        help="Language for text generation (en, da, de, sv, no)")
+    parser.add_argument("--lang", "-l", default=None,
+                        help="Force language for all text overlays (overrides auto-detection from captions.json). If not set, uses detected_language per screenshot.")
     parser.add_argument("--text", "-t", default=None,
                         help="Custom text override (use \\n for line breaks)")
     parser.add_argument("--bg-color", default=None,
@@ -450,7 +509,7 @@ def main():
 
     # Generate config mode
     if args.generate_config:
-        generate_config(args.input, args.generate_config, args.lang)
+        generate_config(args.input, args.generate_config, args.lang or "en")
         return
 
     # Parse bg color

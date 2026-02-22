@@ -103,6 +103,19 @@ Before capturing a screenshot, compare the current screen's accessibility tree w
 
 For each captured screenshot, generate marketing captions in both store formats.
 
+#### Language Detection
+
+Before writing captions, **detect the language visible in each screenshot** by examining:
+- Text content in the accessibility tree from `agent-device snapshot -i`
+- UI labels, button text, menu items, headers visible on screen
+- System language indicators (date formats, navigation labels)
+
+Record the detected language as an ISO 639-1 code (e.g., `en`, `da`, `de`, `sv`, `no`, `fr`, `es`) in the `detected_language` field of each screenshot entry in `captions.json`.
+
+**Write captions in the same language as the screenshot.** If the app UI shows Danish text, write Danish captions. If it shows English, write English captions. Do NOT default to English unless the screenshot is actually in English.
+
+If the user's screenshots contain **multiple languages** (e.g., some screens in English, some in Danish), record each screenshot's language. Phase 4 will automatically organize styled output into per-language folders.
+
 #### Caption Formats
 
 | Store | Field | Max Length |
@@ -170,6 +183,7 @@ This produces:
     {
       "filename": "01_home.png",
       "screen_type": "dashboard",
+      "detected_language": "en",
       "description": "Main dashboard showing task overview",
       "captions": {
         "play_store": {
@@ -181,14 +195,36 @@ This produces:
           "subtitle": "Real-time dashboard"
         }
       }
+    },
+    {
+      "filename": "02_hjem.png",
+      "screen_type": "dashboard",
+      "detected_language": "da",
+      "description": "Hovedskærm med opgaveoversigt",
+      "captions": {
+        "play_store": {
+          "short": "Overblik over alle opgaver",
+          "long": "Se alle dine opgaver, deadlines og fremskridt i ét samlet dashboard"
+        },
+        "app_store": {
+          "caption": "Overblik over alle opgaver",
+          "subtitle": "Opgaver i realtid"
+        }
+      }
     }
   ]
 }
 ```
 
+Note: The `detected_language` field is used by Phase 4 to organize styled screenshots into per-language folders.
+
 ### Phase 4 — Screenshot Styling (MANDATORY — Do Not Skip)
 
 **Immediately after Phase 3**, run the screenshot styler to produce the final store-ready images. This is the main deliverable — raw screenshots are not suitable for store listings.
+
+The styler reads the `detected_language` field from `captions.json` and automatically:
+- Generates captions in the language detected from each screenshot
+- Creates per-language folders when screenshots contain multiple languages
 
 Run this command, replacing the paths with the actual directories used in the previous phases:
 
@@ -199,12 +235,28 @@ python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --captions-json <screenshots_dir>/captions.json
 ```
 
-The styled images are saved to `<screenshots_dir>/styled/` alongside the raw captures.
+#### Multi-Language Output
+
+If `captions.json` contains screenshots in multiple languages, the styler automatically organizes output into per-language folders:
+
+```
+<screenshots_dir>/styled/
+├── en/
+│   ├── 01_home_styled.png
+│   ├── 03_action_plan_styled.png
+│   └── 05_settings_styled.png
+└── da/
+    ├── 02_hjem_styled.png
+    ├── 04_handlingsplan_styled.png
+    └── 06_indstillinger_styled.png
+```
+
+If all screenshots are the same language, they are placed directly in the output folder (no language subfolder).
 
 #### Additional Options
 
 ```bash
-# With a specific language for text overlay
+# Force a specific language for all text overlays (overrides auto-detection)
 python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
   --input <screenshots_dir> \
   --output <screenshots_dir>/styled \
