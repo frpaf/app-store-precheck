@@ -73,6 +73,16 @@ agent-device key back
 agent-device close
 ```
 
+#### Login Screen Handling
+
+After opening the app, if the first screen is a login/auth gate:
+
+1. **Detect**: Look for text fields labeled "email", "username", "password", or sign-in buttons in the snapshot
+2. **Prompt the user**: Ask for their username/email and password — do not guess or skip
+3. **Enter credentials**: Use `agent-device fill @eN "username"` and `agent-device fill @eN "password"` then tap the sign-in button
+4. **Verify**: Take a snapshot after login to confirm you're past the auth screen
+5. **If user declines**: Document that auth is required and capture only pre-login screens
+
 #### Deduplication Approach
 
 Before capturing a screenshot, compare the current screen's accessibility tree with previously captured screens:
@@ -171,7 +181,7 @@ This produces:
 
 | Scenario | Handling |
 |----------|----------|
-| Login/auth screen | Skip unless login UI is a key feature. Note in output if auth is required. |
+| Login/auth screen | If the app opens to a login screen that blocks exploration, **prompt the user** for credentials (username and password) before proceeding. Use `agent-device find "email"` or `agent-device find "username"` to locate input fields, then `agent-device fill @eN "value"` to enter credentials. After login, continue exploration normally. If the user declines to provide credentials, note in output that the app requires auth and only the login screen could be captured. Capture the login screen only if the login UI is a key feature worth showcasing. |
 | Permission dialogs | Dismiss and continue. Don't capture as a marketing screenshot. |
 | Loading states | Wait for content to load before capturing. Use `agent-device snapshot` to verify. |
 | Empty states | Capture only if the empty state has good onboarding UX worth showcasing. |
