@@ -177,6 +177,126 @@ This produces:
 }
 ```
 
+### Phase 4 — Screenshot Styling
+
+After capturing screenshots and generating captions, create store-ready marketing images using the screenshot styler. This adds a phone frame, background, and marketing text overlay to each raw screenshot.
+
+#### Run the Styler
+
+```bash
+# Style all captured screenshots using captions from Phase 3
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <styled_output_dir> \
+  --captions-json <output_dir>/captions.json
+
+# With a specific language
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <styled_output_dir> \
+  --captions-json <output_dir>/captions.json \
+  --lang da
+
+# With custom background color
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <styled_output_dir> \
+  --captions-json <output_dir>/captions.json \
+  --bg-color "25,25,112"
+
+# Generate for a specific device preset
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <styled_output_dir> \
+  --captions-json <output_dir>/captions.json \
+  --preset iphone-6.9
+```
+
+#### What the Styler Does
+
+For each raw screenshot it produces a store-ready image with:
+- **Background**: Configurable solid color (default: dark blue-grey `rgb(55, 71, 90)`)
+- **Phone frame**: Dark rounded rectangle with drop shadow
+- **Marketing text**: Centered above the phone frame, pulled from `captions.json`
+- **Output size**: Matches the selected preset (default: 1080x1920 for Play Store)
+
+#### Text Source Priority
+
+The styler resolves marketing text in this order:
+1. **Config file** (`--config`) — per-screenshot text overrides you've manually edited
+2. **Captions JSON** (`--captions-json`) — uses Play Store short caption or App Store caption from Phase 3
+3. **Manual text** (`--text`) — single text applied to all screenshots
+4. **Claude API** — sends each screenshot to Claude vision API to generate text (requires `ANTHROPIC_API_KEY`)
+5. **Filename fallback** — derives text from the screenshot filename
+
+#### Config File for Repeatable Builds
+
+Generate a config file from AI analysis, then edit it before committing:
+
+```bash
+# Generate config (review and edit the text before using)
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <styled_output_dir> \
+  --generate-config screenshot_config.json --lang en
+
+# Use the edited config for consistent builds
+python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+  --input <screenshots_dir> \
+  --output <styled_output_dir> \
+  --config screenshot_config.json --lang en
+```
+
+Config file format:
+```json
+{
+  "defaults": {
+    "bg_color": [55, 71, 90],
+    "font_size": 52
+  },
+  "screenshots": {
+    "01_home.png": {
+      "en": ["Track Every Task", "At a Glance"],
+      "da": ["Overblik over", "alle opgaver"]
+    },
+    "02_settings.png": {
+      "en": ["Make It Yours"],
+      "da": ["Tilpas det til dig"]
+    }
+  }
+}
+```
+
+#### Size Presets
+
+| Preset | Dimensions | Use |
+|--------|-----------|-----|
+| `phone-portrait` | 1080 x 1920 | Default, Play Store phone |
+| `phone-landscape` | 1920 x 1080 | Landscape screenshots |
+| `iphone-6.9` | 1320 x 2868 | iPhone 16 Pro Max (App Store) |
+| `iphone-6.5` | 1242 x 2688 | iPhone 11 Pro Max (App Store) |
+| `ipad-13` | 2064 x 2752 | iPad Pro (App Store) |
+| `tablet-7` | 1080 x 1920 | Android 7" tablet |
+| `tablet-10` | 1200 x 1920 | Android 10" tablet |
+
+To generate multiple sizes, run the styler once per preset:
+
+```bash
+for preset in phone-portrait iphone-6.9; do
+  python3 skills/app-store-screenshots/scripts/screenshot_styler.py \
+    --input screenshots/ --output "styled_${preset}/" \
+    --captions-json output/captions.json --preset "$preset"
+done
+```
+
+#### Dependencies
+
+- Python 3
+- Pillow (`pip install Pillow`)
+- `anthropic` SDK (optional — only needed if no config/captions provided)
+
+---
+
 ## Edge Cases
 
 | Scenario | Handling |
