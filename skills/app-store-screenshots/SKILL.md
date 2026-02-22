@@ -101,20 +101,28 @@ Before capturing a screenshot, compare the current screen's accessibility tree w
 
 ### Phase 2 — Caption Generation
 
-For each captured screenshot, generate marketing captions in both store formats.
+**CRITICAL — Language Detection (Do this FIRST for every screenshot)**
 
-#### Language Detection
+Before writing any captions, you MUST detect the language of each screenshot. This determines:
+- What language the captions are written in
+- How Phase 4 organizes the styled output into folders
 
-Before writing captions, **detect the language visible in each screenshot** by examining:
-- Text content in the accessibility tree from `agent-device snapshot -i`
-- UI labels, button text, menu items, headers visible on screen
-- System language indicators (date formats, navigation labels)
+For EACH screenshot, examine:
+- Text visible on screen (UI labels, buttons, headers, menu items, body text)
+- The accessibility tree text from `agent-device snapshot -i`
+- Date formats, system labels, navigation text
 
-Record the detected language as an ISO 639-1 code (e.g., `en`, `da`, `de`, `sv`, `no`, `fr`, `es`) in the `detected_language` field of each screenshot entry in `captions.json`.
+Then set `"detected_language"` to the ISO 639-1 code: `"en"`, `"da"`, `"de"`, `"sv"`, `"no"`, `"fr"`, `"es"`, etc.
 
-**Write captions in the same language as the screenshot.** If the app UI shows Danish text, write Danish captions. If it shows English, write English captions. Do NOT default to English unless the screenshot is actually in English.
+**Rules:**
+- If the UI text is in Danish, set `"detected_language": "da"` and write captions in Danish
+- If the UI text is in English, set `"detected_language": "en"` and write captions in English
+- Do NOT default to English — use the actual language shown on screen
+- Every screenshot entry in `captions.json` MUST have a `"detected_language"` field — the styler in Phase 4 will fail to create language folders without it
 
-If the user's screenshots contain **multiple languages** (e.g., some screens in English, some in Danish), record each screenshot's language. Phase 4 will automatically organize styled output into per-language folders.
+**Example:** If you see a button labeled "Indsend rapport" and a header "Hændelsesrapportering", the language is Danish (`da`), so your captions should also be in Danish.
+
+Now generate marketing captions for each screenshot in both store formats.
 
 #### Caption Formats
 

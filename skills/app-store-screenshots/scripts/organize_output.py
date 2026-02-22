@@ -25,13 +25,23 @@ LIMITS = {
 
 
 def validate_captions(data):
-    """Validate all caption lengths against store limits."""
+    """Validate all caption lengths against store limits and required fields."""
     warnings = []
     screenshots = data.get("screenshots", [])
+    missing_lang_count = 0
 
     for i, screenshot in enumerate(screenshots):
         filename = screenshot.get("filename", f"screenshot_{i}")
         captions = screenshot.get("captions", {})
+
+        # Validate detected_language is present
+        if not screenshot.get("detected_language"):
+            missing_lang_count += 1
+            warnings.append(
+                f"CRITICAL: {filename}: Missing 'detected_language' field. "
+                f"Phase 4 styler cannot create per-language folders without it. "
+                f"Add \"detected_language\": \"en\" (or da, de, etc.) to this entry."
+            )
 
         # Validate Play Store captions
         play = captions.get("play_store", {})
@@ -108,8 +118,10 @@ def generate_summary(data, warnings):
         description = screenshot.get("description", "")
         captions = screenshot.get("captions", {})
 
+        detected_lang = screenshot.get("detected_language", "MISSING")
+
         lines.append(f"### {i}. {filename}")
-        lines.append(f"**Type**: {screen_type}")
+        lines.append(f"**Type**: {screen_type} | **Language**: {detected_lang}")
         if description:
             lines.append(f"**Description**: {description}")
         lines.append("")
@@ -178,9 +190,16 @@ def main():
     app_name = data.get("app_name", "Unknown")
     platform = data.get("platform", "unknown")
 
+    # Collect language stats
+    lang_counts = {}
+    for s in screenshots:
+        lang = s.get("detected_language", "MISSING")
+        lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
     print(f"App: {app_name}")
     print(f"Platform: {platform}")
     print(f"Screenshots: {len(screenshots)}")
+    print(f"Languages: {', '.join(f'{lang} ({count})' for lang, count in sorted(lang_counts.items()))}")
     print(f"Output: {output_dir}/")
     print(f"  - captions.json")
     print(f"  - captions_summary.md")
