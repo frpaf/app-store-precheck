@@ -193,6 +193,8 @@ if [ -n "$PLIST" ]; then
         ["NSUserTrackingUsageDescription"]="App Tracking (ATT)"
     )
 
+    echo -e "${BLUE}Checking:${NC} $PLIST"
+    echo ""
     FOUND_KEYS=0
     for key in "${!USAGE_KEYS[@]}"; do
         friendly="${USAGE_KEYS[$key]}"
@@ -204,6 +206,24 @@ if [ -n "$PLIST" ]; then
                 echo -e "  ${RED}❌ BLOCKER: $friendly — placeholder text${NC}"
                 echo "     \"$value\""
                 BLOCKER_MSGS+=("$key contains placeholder text"); ((BLOCKERS++))
+            elif echo "$value" | grep -qiE '(\$\(PRODUCT_NAME\)|Allow .* to access your|Allow .* to use your|Allow .* to save)'; then
+                echo -e "  ${RED}❌ BLOCKER: $friendly — generic template string in built Info.plist${NC}"
+                echo "     \"$value\""
+                echo "     This is likely injected by a plugin/dependency with default text."
+                if [ "$PROJECT_TYPE" = "expo" ]; then
+                    echo "     Fix: Update the plugin config in app.json (plugin configs override infoPlist)"
+                    echo "     Then run: npx expo prebuild --clean"
+                elif [ "$PROJECT_TYPE" = "flutter" ]; then
+                    echo "     Fix: Update ios/Runner/Info.plist directly or the plugin generating this"
+                else
+                    echo "     Fix: Update ios/*/Info.plist directly or the plugin generating this"
+                fi
+                BLOCKER_MSGS+=("$key has generic template string — likely from plugin default"); ((BLOCKERS++))
+            elif echo "$value" | grep -qiE "(with your friends|share.*(friend|contact)|friend.*(share|send))"; then
+                echo -e "  ${RED}❌ BLOCKER: $friendly — wrong context (mentions friends/sharing)${NC}"
+                echo "     \"$value\""
+                echo "     This default text doesn't match your app's actual usage."
+                BLOCKER_MSGS+=("$key has wrong-context text (mentions friends/sharing)"); ((BLOCKERS++))
             elif [ $len -lt 20 ]; then
                 echo -e "  ${YELLOW}⚠️  $friendly — too short ($len chars)${NC}"
                 echo "     \"$value\""
@@ -237,14 +257,17 @@ fi
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#          EXPO PLUGIN PERMISSION OVERRIDES (Guideline 5.1.1)
+#    EXPO PLUGIN PERMISSION OVERRIDES — PRE-PREBUILD ONLY (Guideline 5.1.1)
 # ═══════════════════════════════════════════════════════════════════════════════
-if [ "$PROJECT_TYPE" = "expo" ] && [ -f "app.json" ]; then
+# When ios/ exists, the generated Info.plist is already checked above.
+# This section only runs when there's NO prebuild yet, to catch issues early.
+if [ "$PROJECT_TYPE" = "expo" ] && [ -f "app.json" ] && [ "$HAS_PREBUILD" != true ]; then
     echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
-    echo "┃   EXPO PLUGIN PERMISSION OVERRIDES (Guideline 5.1.1)                      ┃"
+    echo "┃   EXPO PLUGIN PERMISSION PREVIEW (Guideline 5.1.1)                        ┃"
     echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
     echo ""
-    echo -e "  ${CYAN}ℹ️${NC}  Plugin configs override infoPlist values — checking plugin strings"
+    echo -e "  ${CYAN}ℹ️${NC}  No ios/ build found — checking app.json plugin configs as preview"
+    echo -e "  ${CYAN}ℹ️${NC}  Plugin configs override infoPlist values at build time"
     echo ""
 
     PLUGIN_ISSUES=0

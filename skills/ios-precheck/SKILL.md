@@ -93,17 +93,16 @@ Privacy keys checked:
 - `NSHealthShareUsageDescription`
 - `NSHealthUpdateUsageDescription`
 
-### Expo Plugin Permission Overrides (Guideline 5.1.1)
+### Generic Template / Wrong-Context Strings in Built Info.plist (Guideline 5.1.1)
 
 | Check | Guideline | Severity |
 |-------|-----------|----------|
-| expo-camera `cameraPermission` uses generic string (e.g. "Allow $(PRODUCT_NAME)...") | 5.1.1 | ❌ Blocker |
-| expo-camera `microphonePermission` uses generic string | 5.1.1 | ❌ Blocker |
-| expo-image-picker/expo-media-library `photosPermission` uses generic or wrong context string | 5.1.1 | ❌ Blocker |
-| expo-media-library `savePhotosPermission` uses generic string | 5.1.1 | ❌ Blocker |
-| expo-location permission string uses generic string | 5.1.1 | ❌ Blocker |
+| Permission string contains `$(PRODUCT_NAME)` or "Allow X to access/use" template | 5.1.1 | ❌ Blocker |
+| Permission string has wrong-context text (e.g. "share with friends" in a safety app) | 5.1.1 | ❌ Blocker |
 
-**Important:** Expo plugin configs (e.g. `cameraPermission` in `expo-camera`) **override** `infoPlist` values. Good strings in `infoPlist` are ignored if the plugin config has generic strings.
+These checks run on the **generated Info.plist** in `ios/` — the actual file Apple reviews. This catches generic strings regardless of whether they came from Expo plugin configs, Flutter plugin defaults, or manual edits.
+
+**Expo without prebuild:** When no `ios/` directory exists, the script falls back to checking `app.json` plugin configs (`cameraPermission`, `photosPermission`, etc.) as a preview, since plugin configs override `infoPlist` values at build time.
 
 ### Location Permission Consistency (Guideline 2.5.4 / 5.1.1)
 
