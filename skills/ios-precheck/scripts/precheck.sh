@@ -14,6 +14,14 @@ BLOCKERS=0; WARNINGS=0; PASSED=0
 declare -a BLOCKER_MSGS WARNING_MSGS
 PROJECT_TYPE=""; PROJECT_NAME=""
 
+# Cross-framework code pattern constants
+# Background location APIs: Expo, Flutter, React Native, native iOS
+BG_LOCATION_PATTERN="startLocationUpdatesAsync|watchPositionAsync|LocationTaskService|startBackgroundLocationUpdatesAsync|TaskManager.*location|Location\.startLocationUpdatesAsync|startMonitoringSignificantLocationChanges|allowsBackgroundLocationUpdates|BackgroundLocator|background_locator|startUpdatingLocation|CLLocationManager.*startUpdating|getPositionStream.*distanceFilter|onLocationChanged|enableBackgroundMode"
+# Foreground location APIs: Expo, Flutter, React Native, native iOS
+FG_LOCATION_PATTERN="requestForegroundPermissionsAsync|getCurrentPositionAsync|getLastKnownPositionAsync|requestPermissionsAsync.*location|Location\.(getCurrentPosition|getLastKnown)|useLocation|Geolocation\.getCurrentPosition|Geolocator\.getCurrentPosition|Geolocator\.getLastKnownPosition|CLLocationManager.*requestWhenInUse|requestLocation"
+# Audio playback APIs: Expo, Flutter, React Native, native iOS
+AUDIO_PATTERN="expo-av|Audio\.Sound|Audio\.Recording|useAudioPlayer|AVAudioSession|AVAudioPlayer|expo-video.*backgroundPlayback|AudioSession|playbackAllowsExternalMedia|just_audio|audioplayers|audio_service|AudioPlayer|MediaPlayer|AVPlayer|backgroundPlayback|audio_session"
+
 echo ""
 echo "╔═══════════════════════════════════════════════════════════════════════════╗"
 echo "║                APPLE APP STORE PRE-CHECK VALIDATOR v3.0                   ║"
@@ -83,6 +91,19 @@ if [ -z "$PLIST" ]; then
                 echo -e "  ${RED}❌ BLOCKER: UIBackgroundModes 'voip' in app.json${NC}"
                 BLOCKER_MSGS+=("UIBackgroundModes 'voip' in app.json"); ((BLOCKERS++))
             fi
+            # Check "location" in background modes vs actual background location usage
+            if grep -A5 '"UIBackgroundModes"' app.json | grep -q '"location"'; then
+                USES_BG_LOCATION=false
+                [ -d "$SRC_DIR" ] && grep -rqE "$BG_LOCATION_PATTERN" "$SRC_DIR" 2>/dev/null && USES_BG_LOCATION=true
+                if [ "$USES_BG_LOCATION" = false ]; then
+                    echo -e "  ${RED}❌ BLOCKER: UIBackgroundModes 'location' but no background location code found${NC}"
+                    echo "     If using foreground-only location, remove 'location' from UIBackgroundModes"
+                    echo "     Fix: Change UIBackgroundModes to only [\"fetch\", \"remote-notification\"]"
+                    BLOCKER_MSGS+=("UIBackgroundModes 'location' without background location usage"); ((BLOCKERS++))
+                else
+                    echo -e "  ${GREEN}✅${NC} UIBackgroundModes 'location' — background location code found"; ((PASSED++))
+                fi
+            fi
         else
             echo -e "  ${GREEN}✅${NC} No UIBackgroundModes in app.json"; ((PASSED++))
         fi
@@ -99,9 +120,25 @@ else
     if [ -n "$BG_MODES" ]; then
         BG_OK=true
         if echo "$BG_MODES" | grep -q ">audio<"; then
-            echo -e "  ${RED}❌ BLOCKER: 'audio' — only for streaming/playback apps${NC}"
-            echo "     Push notification sounds work WITHOUT this."
-            echo "     Fix: Remove 'audio' from UIBackgroundModes"
+            # Check if any audio playback/streaming code exists
+            USES_AUDIO=false
+            [ -d "$SRC_DIR" ] && grep -rqE "$AUDIO_PATTERN" "$SRC_DIR" 2>/dev/null && USES_AUDIO=true
+            if [ "$USES_AUDIO" = false ]; then
+                echo -e "  ${RED}❌ BLOCKER: 'audio' — no audio playback/streaming code found${NC}"
+                echo "     This may have been injected by a dependency during build."
+                echo "     Push notification sounds work WITHOUT this."
+                echo "     Fix: Remove 'audio' from UIBackgroundModes in Info.plist"
+                if [ "$PROJECT_TYPE" = "expo" ]; then
+                    echo "     For Expo: ensure expo-video has supportsBackgroundPlayback: false"
+                    echo "     Then run: npx expo prebuild --clean"
+                elif [ "$PROJECT_TYPE" = "flutter" ]; then
+                    echo "     Check Flutter plugins (audio_service, just_audio) for background config"
+                fi
+            else
+                echo -e "  ${RED}❌ BLOCKER: 'audio' — only for streaming/playback apps${NC}"
+                echo "     Push notification sounds work WITHOUT this."
+                echo "     Fix: Remove 'audio' from UIBackgroundModes"
+            fi
             BLOCKER_MSGS+=("UIBackgroundModes 'audio'"); ((BLOCKERS++)); BG_OK=false
         fi
         if echo "$BG_MODES" | grep -q ">voip<"; then
@@ -109,8 +146,19 @@ else
             BLOCKER_MSGS+=("UIBackgroundModes 'voip'"); ((BLOCKERS++)); BG_OK=false
         fi
         if echo "$BG_MODES" | grep -q ">location<"; then
-            echo -e "  ${YELLOW}⚠️  'location' — requires user-facing justification${NC}"
-            WARNING_MSGS+=("UIBackgroundModes 'location'"); ((WARNINGS++)); BG_OK=false
+            # Check if app actually uses background location APIs
+            USES_BG_LOCATION=false
+            [ -d "$SRC_DIR" ] && grep -rqE "$BG_LOCATION_PATTERN" "$SRC_DIR" 2>/dev/null && USES_BG_LOCATION=true
+            if [ "$USES_BG_LOCATION" = false ]; then
+                echo -e "  ${RED}❌ BLOCKER: 'location' — no background location code found${NC}"
+                echo "     App uses foreground-only location (e.g. getCurrentPositionAsync)"
+                echo "     Fix: Remove 'location' from UIBackgroundModes"
+                BLOCKER_MSGS+=("UIBackgroundModes 'location' without background location usage"); ((BLOCKERS++))
+            else
+                echo -e "  ${YELLOW}⚠️  'location' — requires user-facing justification${NC}"
+                WARNING_MSGS+=("UIBackgroundModes 'location'"); ((WARNINGS++))
+            fi
+            BG_OK=false
         fi
         [ "$BG_OK" = true ] && echo -e "  ${GREEN}✅${NC} Background modes OK" && ((PASSED++))
     else
@@ -185,6 +233,150 @@ elif [ "$PROJECT_TYPE" = "expo" ] && [ -f "app.json" ]; then
             fi
         fi
     done
+fi
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#          EXPO PLUGIN PERMISSION OVERRIDES (Guideline 5.1.1)
+# ═══════════════════════════════════════════════════════════════════════════════
+if [ "$PROJECT_TYPE" = "expo" ] && [ -f "app.json" ]; then
+    echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+    echo "┃   EXPO PLUGIN PERMISSION OVERRIDES (Guideline 5.1.1)                      ┃"
+    echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+    echo ""
+    echo -e "  ${CYAN}ℹ️${NC}  Plugin configs override infoPlist values — checking plugin strings"
+    echo ""
+
+    PLUGIN_ISSUES=0
+    # Check expo-camera plugin permission strings
+    CAMERA_PERM=$(grep -oP '"cameraPermission"\s*:\s*"\K[^"]*' app.json 2>/dev/null || echo "")
+    if [ -n "$CAMERA_PERM" ]; then
+        if echo "$CAMERA_PERM" | grep -qiE '(\$\(PRODUCT_NAME\)|Allow .* to access|Allow .* to use)'; then
+            echo -e "  ${RED}❌ BLOCKER: expo-camera cameraPermission is generic${NC}"
+            echo "     \"$CAMERA_PERM\""
+            echo "     Fix: Use app-specific description, e.g.:"
+            echo "     \"This app uses the camera to take photos for reports and QR code scanning.\""
+            BLOCKER_MSGS+=("expo-camera cameraPermission is generic — overrides infoPlist"); ((BLOCKERS++)); ((PLUGIN_ISSUES++))
+        else
+            echo -e "  ${GREEN}✅${NC} expo-camera cameraPermission is descriptive"; ((PASSED++))
+        fi
+    fi
+
+    MIC_PERM=$(grep -oP '"microphonePermission"\s*:\s*"\K[^"]*' app.json 2>/dev/null || echo "")
+    if [ -n "$MIC_PERM" ]; then
+        if echo "$MIC_PERM" | grep -qiE '(\$\(PRODUCT_NAME\)|Allow .* to access|Allow .* to use)'; then
+            echo -e "  ${RED}❌ BLOCKER: expo-camera microphonePermission is generic${NC}"
+            echo "     \"$MIC_PERM\""
+            echo "     Fix: Use app-specific description, e.g.:"
+            echo "     \"This app uses the microphone to record audio notes for documentation.\""
+            BLOCKER_MSGS+=("expo-camera microphonePermission is generic — overrides infoPlist"); ((BLOCKERS++)); ((PLUGIN_ISSUES++))
+        else
+            echo -e "  ${GREEN}✅${NC} expo-camera microphonePermission is descriptive"; ((PASSED++))
+        fi
+    fi
+
+    # Check expo-image-picker plugin permission strings
+    PHOTOS_PERM=$(grep -oP '"photosPermission"\s*:\s*"\K[^"]*' app.json 2>/dev/null || echo "")
+    if [ -n "$PHOTOS_PERM" ]; then
+        if echo "$PHOTOS_PERM" | grep -qiE '(\$\(PRODUCT_NAME\)|Allow .* to access|Allow .* to use|share them with your friends|with your friends)'; then
+            echo -e "  ${RED}❌ BLOCKER: Plugin photosPermission is generic or wrong context${NC}"
+            echo "     \"$PHOTOS_PERM\""
+            echo "     Fix: Use app-specific description, e.g.:"
+            echo "     \"This app accesses your photo library to attach images to reports.\""
+            BLOCKER_MSGS+=("Plugin photosPermission is generic — overrides infoPlist"); ((BLOCKERS++)); ((PLUGIN_ISSUES++))
+        else
+            echo -e "  ${GREEN}✅${NC} Plugin photosPermission is descriptive"; ((PASSED++))
+        fi
+    fi
+
+    # Check expo-media-library savePhotosPermission
+    SAVE_PHOTOS_PERM=$(grep -oP '"savePhotosPermission"\s*:\s*"\K[^"]*' app.json 2>/dev/null || echo "")
+    if [ -n "$SAVE_PHOTOS_PERM" ]; then
+        if echo "$SAVE_PHOTOS_PERM" | grep -qiE '(\$\(PRODUCT_NAME\)|Allow .* to save|Allow .* to access)'; then
+            echo -e "  ${RED}❌ BLOCKER: expo-media-library savePhotosPermission is generic${NC}"
+            echo "     \"$SAVE_PHOTOS_PERM\""
+            echo "     Fix: Use app-specific description, e.g.:"
+            echo "     \"This app saves captured photos to your library for your records.\""
+            BLOCKER_MSGS+=("expo-media-library savePhotosPermission is generic — overrides infoPlist"); ((BLOCKERS++)); ((PLUGIN_ISSUES++))
+        else
+            echo -e "  ${GREEN}✅${NC} expo-media-library savePhotosPermission is descriptive"; ((PASSED++))
+        fi
+    fi
+
+    # Check expo-location plugin permission strings
+    LOC_ALWAYS_PERM=$(grep -oP '"locationAlwaysAndWhenInUsePermission"\s*:\s*"\K[^"]*' app.json 2>/dev/null || echo "")
+    LOC_WHENUSE_PERM=$(grep -oP '"locationWhenInUsePermission"\s*:\s*"\K[^"]*' app.json 2>/dev/null || echo "")
+    for LOC_PERM_VAL in "$LOC_ALWAYS_PERM" "$LOC_WHENUSE_PERM"; do
+        if [ -n "$LOC_PERM_VAL" ]; then
+            if echo "$LOC_PERM_VAL" | grep -qiE '(\$\(PRODUCT_NAME\)|Allow .* to use your location|Allow .* to access)'; then
+                echo -e "  ${RED}❌ BLOCKER: expo-location permission string is generic${NC}"
+                echo "     \"$LOC_PERM_VAL\""
+                echo "     Fix: Use app-specific description, e.g.:"
+                echo "     \"This app uses your location to tag reports with where events occur.\""
+                BLOCKER_MSGS+=("expo-location permission string is generic — overrides infoPlist"); ((BLOCKERS++)); ((PLUGIN_ISSUES++))
+            else
+                echo -e "  ${GREEN}✅${NC} expo-location permission string is descriptive"; ((PASSED++))
+            fi
+        fi
+    done
+
+    [ $PLUGIN_ISSUES -eq 0 ] && [ -z "$CAMERA_PERM$MIC_PERM$PHOTOS_PERM$SAVE_PHOTOS_PERM$LOC_ALWAYS_PERM$LOC_WHENUSE_PERM" ] && echo -e "  ${CYAN}ℹ️${NC}  No plugin permission overrides found in app.json"
+    echo ""
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#       LOCATION PERMISSION CONSISTENCY (Guideline 2.5.4 / 5.1.1)
+# ═══════════════════════════════════════════════════════════════════════════════
+echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+echo "┃   LOCATION PERMISSION CONSISTENCY (Guideline 2.5.4 / 5.1.1)              ┃"
+echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+echo ""
+
+USES_BG_LOCATION_CODE=false
+USES_FG_LOCATION_CODE=false
+if [ -d "$SRC_DIR" ]; then
+    grep -rqE "$BG_LOCATION_PATTERN" "$SRC_DIR" 2>/dev/null && USES_BG_LOCATION_CODE=true
+    grep -rqE "$FG_LOCATION_PATTERN" "$SRC_DIR" 2>/dev/null && USES_FG_LOCATION_CODE=true
+fi
+
+if [ "$USES_FG_LOCATION_CODE" = true ] && [ "$USES_BG_LOCATION_CODE" = false ]; then
+    # Foreground-only location — check for unnecessary "Always" permissions
+    if [ -n "$PLIST" ]; then
+        HAS_ALWAYS=$(plutil -extract NSLocationAlwaysUsageDescription raw -o - "$PLIST" 2>/dev/null || echo "")
+        HAS_ALWAYS_AND=$(plutil -extract NSLocationAlwaysAndWhenInUseUsageDescription raw -o - "$PLIST" 2>/dev/null || echo "")
+        if [ -n "$HAS_ALWAYS" ] || [ -n "$HAS_ALWAYS_AND" ]; then
+            echo -e "  ${RED}❌ BLOCKER: App uses foreground-only location but declares 'Always' location permissions${NC}"
+            echo "     Code only uses foreground location APIs (no background location tracking found)"
+            echo "     But Info.plist has NSLocationAlwaysUsageDescription or NSLocationAlwaysAndWhenInUseUsageDescription"
+            echo "     Fix: Remove NSLocationAlwaysUsageDescription and NSLocationAlwaysAndWhenInUseUsageDescription"
+            echo "     Keep only NSLocationWhenInUseUsageDescription"
+            BLOCKER_MSGS+=("Foreground-only location but declares Always location permissions"); ((BLOCKERS++))
+        else
+            echo -e "  ${GREEN}✅${NC} Location permissions match foreground-only usage"; ((PASSED++))
+        fi
+    elif [ "$PROJECT_TYPE" = "expo" ] && [ -f "app.json" ]; then
+        # Check if expo-location uses locationAlwaysAndWhenInUsePermission when only foreground is needed
+        if grep -q '"locationAlwaysAndWhenInUsePermission"' app.json 2>/dev/null; then
+            echo -e "  ${RED}❌ BLOCKER: App uses foreground-only location but expo-location declares 'Always' permission${NC}"
+            echo "     Code only uses foreground location APIs (no background location tracking found)"
+            echo "     But app.json has locationAlwaysAndWhenInUsePermission in expo-location plugin"
+            echo "     Fix: Change to locationWhenInUsePermission instead:"
+            echo "     [\"expo-location\", { \"locationWhenInUsePermission\": \"Your descriptive string here\" }]"
+            BLOCKER_MSGS+=("Foreground-only location but expo-location declares Always permission"); ((BLOCKERS++))
+        else
+            echo -e "  ${GREEN}✅${NC} Location permissions match foreground-only usage"; ((PASSED++))
+        fi
+        # Check infoPlist for unnecessary Always keys
+        if grep -q '"NSLocationAlwaysUsageDescription"' app.json 2>/dev/null || grep -q '"NSLocationAlwaysAndWhenInUseUsageDescription"' app.json 2>/dev/null; then
+            echo -e "  ${YELLOW}⚠️  infoPlist has NSLocationAlways* keys but app only uses foreground location${NC}"
+            echo "     Fix: Remove NSLocationAlwaysUsageDescription and NSLocationAlwaysAndWhenInUseUsageDescription from infoPlist"
+            WARNING_MSGS+=("Unnecessary Always location keys in infoPlist"); ((WARNINGS++))
+        fi
+    fi
+elif [ "$USES_BG_LOCATION_CODE" = true ]; then
+    echo -e "  ${GREEN}✅${NC} Background location code found — Always permission is justified"; ((PASSED++))
+else
+    echo -e "  ${CYAN}ℹ️${NC}  No location code detected — skipping consistency check"
 fi
 echo ""
 
@@ -300,6 +492,45 @@ fi
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#              BUSINESS DISTRIBUTION SIGNALS (Guideline 3.2)
+# ═══════════════════════════════════════════════════════════════════════════════
+echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+echo "┃   BUSINESS DISTRIBUTION SIGNALS (Guideline 3.2)                           ┃"
+echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+echo ""
+
+B2B_SIGNALS=0
+if [ -d "$SRC_DIR" ]; then
+    # Check for B2B / enterprise patterns
+    grep -rqiE "(enterprise|organization|company|employer|corporate|tenant|workspace).*\b(login|auth|sign.?in|account|register|onboard)\b" "$SRC_DIR" 2>/dev/null && ((B2B_SIGNALS++))
+    grep -rqiE "\b(login|auth|sign.?in|account|register|onboard)\b.*(enterprise|organization|company|employer|corporate|tenant|workspace)" "$SRC_DIR" 2>/dev/null && ((B2B_SIGNALS++))
+    # No public signup / invite-only patterns
+    grep -rqiE "(invite.?only|invitation.?code|org.?code|company.?code|access.?code|no.?public.?sign)" "$SRC_DIR" 2>/dev/null && ((B2B_SIGNALS++))
+    # Admin / management portal patterns
+    grep -rqiE "(admin.?panel|admin.?dashboard|manage.?users|user.?management|role.?based|rbac)" "$SRC_DIR" 2>/dev/null && ((B2B_SIGNALS++))
+fi
+
+if [ $B2B_SIGNALS -ge 2 ]; then
+    echo -e "  ${YELLOW}⚠️  App appears to be B2B/enterprise — Apple may flag Guideline 3.2${NC}"
+    echo "     Apple may ask: Is this app for general public or internal business use?"
+    echo ""
+    echo "     ${CYAN}Prepare responses for App Store Connect review notes:${NC}"
+    echo "     1. Is the app restricted to one company? (Explain multi-tenant model)"
+    echo "     2. What industries/companies does it serve?"
+    echo "     3. Are there features for the general public?"
+    echo "     4. How do users obtain accounts? (Through employer, self-signup, etc.)"
+    echo "     5. What is the payment model? (B2B, individual, freemium, etc.)"
+    echo ""
+    echo "     ${CYAN}Tip: Add clear explanation in App Review Notes in App Store Connect${NC}"
+    WARNING_MSGS+=("B2B/enterprise app — prepare Guideline 3.2 response for Apple"); ((WARNINGS++))
+elif [ $B2B_SIGNALS -eq 1 ]; then
+    echo -e "  ${CYAN}ℹ️${NC}  Some B2B patterns detected — consider preparing Guideline 3.2 justification"
+else
+    echo -e "  ${GREEN}✅${NC} No B2B/enterprise-only distribution signals"; ((PASSED++))
+fi
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #                      FLUTTER VERSION CHECK
 # ═══════════════════════════════════════════════════════════════════════════════
 if [ "$PROJECT_TYPE" = "flutter" ]; then
@@ -350,6 +581,7 @@ echo "   [ ] Contact info for App Review team"
 echo "   [ ] IDFA declaration (if using advertising identifier)"
 echo "   [ ] Export compliance (encryption) answered"
 echo "   [ ] In-app purchases submitted for review"
+echo "   [ ] Guideline 3.2 response ready (if B2B/enterprise app)"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

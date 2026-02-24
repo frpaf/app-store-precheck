@@ -60,8 +60,10 @@ Without prebuild, the script checks `app.json` config only.
 | Check | Guideline | Severity |
 |-------|-----------|----------|
 | `UIBackgroundModes` contains `audio` without audio playback feature | 2.5.4 | ❌ Blocker |
+| `UIBackgroundModes` contains `audio` injected by dependency (e.g. expo-video) | 2.5.4 | ❌ Blocker |
 | `UIBackgroundModes` contains `voip` without VoIP feature | 2.5.4 | ❌ Blocker |
-| `UIBackgroundModes` contains `location` without active location tracking | 2.5.4 | ❌ Blocker |
+| `UIBackgroundModes` contains `location` but no background location code found | 2.5.4 | ❌ Blocker |
+| `UIBackgroundModes` contains `location` with background location code | 2.5.4 | ⚠️ Warning |
 | `UIBackgroundModes` contains `bluetooth-central` without BLE feature | 2.5.4 | ⚠️ Warning |
 
 ### Privacy Purpose Strings (Guideline 5.1.1)
@@ -90,6 +92,34 @@ Privacy keys checked:
 - `NSSpeechRecognitionUsageDescription`
 - `NSHealthShareUsageDescription`
 - `NSHealthUpdateUsageDescription`
+
+### Expo Plugin Permission Overrides (Guideline 5.1.1)
+
+| Check | Guideline | Severity |
+|-------|-----------|----------|
+| expo-camera `cameraPermission` uses generic string (e.g. "Allow $(PRODUCT_NAME)...") | 5.1.1 | ❌ Blocker |
+| expo-camera `microphonePermission` uses generic string | 5.1.1 | ❌ Blocker |
+| expo-image-picker/expo-media-library `photosPermission` uses generic or wrong context string | 5.1.1 | ❌ Blocker |
+| expo-media-library `savePhotosPermission` uses generic string | 5.1.1 | ❌ Blocker |
+| expo-location permission string uses generic string | 5.1.1 | ❌ Blocker |
+
+**Important:** Expo plugin configs (e.g. `cameraPermission` in `expo-camera`) **override** `infoPlist` values. Good strings in `infoPlist` are ignored if the plugin config has generic strings.
+
+### Location Permission Consistency (Guideline 2.5.4 / 5.1.1)
+
+| Check | Guideline | Severity |
+|-------|-----------|----------|
+| Foreground-only location code but declares `NSLocationAlwaysUsageDescription` | 2.5.4 | ❌ Blocker |
+| Foreground-only location code but expo-location uses `locationAlwaysAndWhenInUsePermission` | 2.5.4 | ❌ Blocker |
+| Unnecessary `NSLocationAlways*` keys in infoPlist for foreground-only app | 5.1.1 | ⚠️ Warning |
+
+### Business Distribution Signals (Guideline 3.2)
+
+| Check | Guideline | Severity |
+|-------|-----------|----------|
+| App has B2B/enterprise patterns (org login, invite-only, admin panels) | 3.2 | ⚠️ Warning |
+
+Apple may reject apps that appear to be for internal business use only. The check detects patterns like enterprise login, invite codes, admin panels, and multi-tenant architecture. If flagged, prepare responses to Apple's 5 questions about distribution scope.
 
 ### App Transport Security (ATS)
 
@@ -316,6 +346,58 @@ For Expo, remove from `app.json`:
   }
 }
 ```
+
+### Expo Plugin Permission Overrides (Guideline 5.1.1)
+
+Plugin configs override `infoPlist` values. Update the plugin configs directly:
+
+```json
+// app.json — expo-camera plugin
+["expo-camera", {
+  "cameraPermission": "This app uses the camera to take photos for incident reports and QR code scanning.",
+  "microphonePermission": "This app uses the microphone to record audio notes and capture videos for documentation."
+}]
+
+// app.json — expo-image-picker plugin
+["expo-image-picker", {
+  "photosPermission": "This app accesses your photo library to attach existing images to reports."
+}]
+
+// app.json — expo-media-library plugin
+["expo-media-library", {
+  "photosPermission": "This app accesses your photo library to attach images to reports.",
+  "savePhotosPermission": "This app saves captured photos to your photo library for your records."
+}]
+
+// app.json — expo-location plugin (foreground-only)
+["expo-location", {
+  "locationWhenInUsePermission": "This app uses your location to tag reports with where events occur."
+}]
+```
+
+After changes, run `npx expo prebuild --clean` to regenerate `Info.plist`.
+
+### Location Permission Consistency (Guideline 2.5.4)
+
+If your app only uses foreground location (`requestForegroundPermissionsAsync`, `getCurrentPositionAsync`):
+
+1. Remove `"location"` from `UIBackgroundModes`
+2. Remove `NSLocationAlwaysUsageDescription` from `infoPlist`
+3. Remove `NSLocationAlwaysAndWhenInUseUsageDescription` from `infoPlist`
+4. Use `locationWhenInUsePermission` (not `locationAlwaysAndWhenInUsePermission`) in expo-location plugin
+5. Keep only `NSLocationWhenInUseUsageDescription`
+
+### Business Distribution (Guideline 3.2)
+
+If Apple flags your app as internal/enterprise-only, respond in App Store Connect with:
+
+1. **Not restricted to one company** — explain multi-tenant/multi-client model
+2. **Serves multiple organizations** — list industries or use cases
+3. **General public features** — describe any publicly accessible features
+4. **Account creation** — how users get accounts (employer signup, self-registration, etc.)
+5. **Payment model** — B2B subscription, individual purchase, freemium, etc.
+
+Add this information in **App Review Notes** in App Store Connect before resubmitting.
 
 ### Generic Privacy Strings (Guideline 5.1.1)
 
